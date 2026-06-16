@@ -10,7 +10,7 @@ import io
 # ブラウザのインストールを行うように変更
 # （モジュールのトップレベルで実行するとタイムアウトの「Starting...」になるため）
 
-CONCURRENT_LIMIT = 5
+CONCURRENT_LIMIT = 1
 WAIT_TIME = 1
 
 async def fetch_and_extract(context, url, selector, semaphore, index):
