@@ -29,13 +29,13 @@ async def fetch_and_extract(context, url, selector, semaphore, index):
         result_text = ""
         try:
             print(f"開始: {url}")
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
             # セレクターが出るまで待機
             try:
                 await page.wait_for_function(
                     f"document.querySelector('{selector}')?.innerText.trim().length > 0",
-                    timeout=15000
+                    timeout=30000
                 )
                 if WAIT_TIME > 0:
                     await asyncio.sleep(WAIT_TIME)
@@ -108,7 +108,7 @@ async def scrape_from_text(input_tsv_text):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
             locale='ja-JP',
             timezone_id='Asia/Tokyo',
-            viewport={'width': 1920, 'height': 1080},
+            viewport={'width': 1280, 'height': 720},
             extra_http_headers={
                 'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
                 'sec-ch-ua': '"Not(A:Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
@@ -117,33 +117,18 @@ async def scrape_from_text(input_tsv_text):
                 'Upgrade-Insecure-Requests': '1',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
             })
-        
-        semaphore = asyncio.Semaphore(CONCURRENT_LIMIT)
-        
-        tasks = [
-            asyncio.create_task(fetch_and_extract(context, r['url'], r['selector'], semaphore, idx)) 
-            for idx, r in enumerate(records)
-        ]
-        
+
         results = []
-        total = len(tasks)
-        
-        # 件数が多い場合にUIが反応しなくなるのを防ぐため、即座に1回目のyieldを実施
+        total = len(records)
         yield f"スクレイピング開始... (0/{total} 件完了)", ""
 
-        for i, completed_task in enumerate(asyncio.as_completed(tasks), 1):
-            res = await completed_task
+        for idx, r in enumerate(records):
+            res = await fetch_and_extract(context, r['url'], r['selector'], asyncio.Semaphore(1), idx)
             results.append(res)
-            
-            # 入力された順序（_index）でソートしてから出力する
-            sorted_results = sorted(results, key=lambda x: x["_index"])
-            
-            # 出力用 DataFrame では _index 列を削除して作成
-            df_current = pd.DataFrame([{k: v for k, v in r.items() if k != "_index"} for r in sorted_results])
-            yield f"実行中... ({i}/{total} 件完了)", df_current.to_csv(sep='\t', index=False)
+            df_current = pd.DataFrame([{k: v for k, v in x.items() if k != "_index"} for x in results])
+            yield f"実行中... ({idx + 1}/{total} 件完了)", df_current.to_csv(sep='\t', index=False)
 
-        sorted_results = sorted(results, key=lambda x: x["_index"])
-        df_final = pd.DataFrame([{k: v for k, v in r.items() if k != "_index"} for r in sorted_results])
+        df_final = pd.DataFrame([{k: v for k, v in r.items() if k != "_index"} for r in results])
         yield "スクレイピングが完了しました。", df_final.to_csv(sep='\t', index=False)
 
     except Exception as e:
